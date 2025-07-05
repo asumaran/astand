@@ -15,5 +15,11 @@
     "url": "https://github.com/asumaran/astand/issues"
   },
   "homepage": "https://github.com/asumaran/astand#readme",
-  "description": ""
+  "description": "",
+  "dependencies": {
+    "react": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8"
+  }
 }
