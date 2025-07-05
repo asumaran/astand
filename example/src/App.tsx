@@ -1,5 +1,5 @@
 import './App.css';
-import { useState } from '../../src/index';
+import { useState } from '@astand/index.tsx';
 
 function App() {
   console.log('App render');
