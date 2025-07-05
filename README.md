@@ -1,1 +1,1 @@
-astand, lile zustand but with as.
+astand, like zustand but with as.
