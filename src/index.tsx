@@ -1,65 +1,53 @@
-import { useSyncExternalStore } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
+import store from './store';
 
-// Global state storage - shared across all hook instances
-let state: any;
-// Set of listener functions that React calls when checking for state changes
-let listeners = new Set<() => void>();
+export function useState<T>(
+  initialValue?: T
+): [T, (value: T | ((prev: T) => T)) => void] {
+  // We need useRef to persist the unique index for each useState instance.
+  const indexRef = useRef<number | null>(null);
 
-/**
- * Subscription function for useSyncExternalStore
- * React calls this to register/unregister for state change notifications
- * @param listener - Function that React provides to notify about potential state changes
- * @returns Cleanup function to unsubscribe the listener
- */
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-/**
- * Updates global state and notifies React about the change
- * @param newPartialState - The new state value
- */
-function setState<T>(newPartialState: T) {
-  // Update the global state
-  state = newPartialState;
-  // Notify React that state might have changed by calling all listeners
-  // React will then call getSnapshot to check if the value actually changed
-  listeners.forEach((listener) => listener());
-}
-
-// Type for state setter function that accepts either a value or an updater function
-type SetterFunction<T> = (newValue: T | ((prevValue: T) => T)) => void;
-
-/**
- * Custom useState hook that shares state globally across all components
- * Unlike React's useState, all instances of this hook share the same state
- */
-export function useState<T>(initialValue?: T): [T, SetterFunction<T>] {
-  // Initialize global state only on first hook usage
-  if (state === undefined) {
-    setState(initialValue);
+  if (indexRef.current === null) {
+    // Assign the current index based on the current length of the state array.
+    // This ensures that each useState call gets a unique, sequential index.
+    indexRef.current = store.state.length;
+    if (store.state[indexRef.current] === undefined) {
+      // If this is the first time this useState is called, initialize its state slot with the provided initial value.
+      store.state[indexRef.current] = initialValue;
+      // Initialize lastSnapshot to a shallow copy of the state array,
+      // so React can track the initial state for all hooks.
+      store.lastSnapshot = [...store.state];
+    }
   }
 
-  // Subscribe to external state using React's useSyncExternalStore
-  // - subscribe: tells React how to listen for state changes
-  // - getSnapshot: tells React how to get current state value
-  // React automatically handles re-rendering when the snapshot changes
-  const snapshot = useSyncExternalStore(subscribe, () => state);
+  // Assign the current index from indexRef. This value is fixed for each useState instance.
+  // This way setValue will always have the corect index value assigned to each useState instance.
+  const index = indexRef.current;
 
-  // Create state setter that mimics React's useState behavior
-  const setValue: SetterFunction<T> = (newValue) => {
-    if (typeof newValue === 'function') {
-      // Handle updater function: call it with current state to compute new value
-      setState((newValue as (prevValue: T) => T)(state));
-    } else {
-      // Handle direct value: set it as the new state
-      setState(newValue);
+  const setValue = (value: T | ((prev: T) => T)) => {
+    const nextValue =
+      typeof value === 'function'
+        ? (value as (prev: T) => T)(store.state[index])
+        : value;
+
+    if (nextValue !== store.state[index]) {
+      store.state[index] = nextValue;
+      // Update lastSnapshot to a new shallow copy of the state array after a value changes.
+      // This triggers React to re-evaluate the snapshot and re-render if needed.
+      store.lastSnapshot = [...store.state];
+      store.listeners.forEach((listener) => listener());
     }
   };
 
-  return [snapshot, setValue];
+  const snapshot = useSyncExternalStore(
+    (listener) => {
+      store.listeners.add(listener);
+      return () => store.listeners.delete(listener);
+    },
+    // useSyncExternalStore will call this function to get the current snapshot.
+    // React compares the returned array (lastSnapshot) by reference to decide if a re-render is needed.
+    () => store.lastSnapshot
+  );
+
+  return [snapshot[index], setValue];
 }
